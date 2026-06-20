@@ -4,7 +4,10 @@
 
 import Foundation
 import Combine
+import UIKit
+import SwiftUI
 
+@MainActor
 final class ChatViewModel: ObservableObject {
 
     @Published private(set) var fullscreenAttachmentItem: Optional<Attachment> = nil
@@ -12,19 +15,31 @@ final class ChatViewModel: ObservableObject {
 
     @Published var messageMenuRow: MessageRow?
 
+    /// The messages frame that is currently being rendered in the Message Menu
+    /// - Note: Used to further refine a messages frame (instead of using the cell boundary), mainly used for positioning reactions
+    @Published var messageFrame: CGRect = .zero
+
+    /// Provides a mechanism to issue haptic feedback to the user
+    /// - Note: Used when launching the MessageMenu
+
     let inputFieldId = UUID()
 
-    var didSendMessage: (DraftMessage) -> Void = {_ in}
+    var didSendMessage: (DraftMessage) -> Void = {_ in }
+    var didUpdateAttachmentStatus: (AttachmentUploadUpdate) -> Void = { _ in }
     var globalFocusState: GlobalFocusState?
 
     func presentAttachmentFullScreen(_ attachment: Attachment) {
         fullscreenAttachmentItem = attachment
         fullscreenAttachmentPresented = true
     }
-    
+
     func dismissAttachmentFullScreen() {
         fullscreenAttachmentPresented = false
         fullscreenAttachmentItem = nil
+    }
+
+    func updateAttachmentStatus(_ uploadUpdate: AttachmentUploadUpdate) {
+        didUpdateAttachmentStatus(uploadUpdate)
     }
 
     func sendMessage(_ message: DraftMessage) {
@@ -33,19 +48,22 @@ final class ChatViewModel: ObservableObject {
 
     func messageMenuAction() -> (Message, DefaultMessageMenuAction) -> Void {
         { [weak self] message, action in
-            DispatchQueue.main.async {
-                self?.messageMenuActionInternal(message: message, action: action)
-            }
+            self?.messageMenuActionInternal(message: message, action: action)
         }
     }
 
-    @MainActor
+    func focusTheInputTextView() {
+        globalFocusState?.focus = .uuid(inputFieldId)
+    }
+
     func messageMenuActionInternal(message: Message, action: DefaultMessageMenuAction) {
         switch action {
+        case .copy:
+            UIPasteboard.general.string = String(message.attributedText.characters)
         case .reply:
-            globalFocusState?.focus = .uuid(inputFieldId)
-        case .edit(let saveClosure):
-            globalFocusState?.focus = .uuid(inputFieldId)
+            focusTheInputTextView()
+        case .edit:
+            focusTheInputTextView()
         }
     }
 }

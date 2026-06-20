@@ -26,7 +26,7 @@ struct FullscreenMediaPages: View {
             }
 
         ZStack {
-            Color.black
+            theme.colors.mainBG
                 .opacity(max((200.0 - viewModel.offset.height) / 200.0, 0.5))
             VStack {
                 TabView(selection: $viewModel.index) {
@@ -34,7 +34,6 @@ struct FullscreenMediaPages: View {
                         AttachmentsPage(attachment: attachment)
                             .tag(index)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .allowsHitTesting(false)
                             .ignoresSafeArea()
                     }
                     .ignoresSafeArea()
@@ -56,13 +55,14 @@ struct FullscreenMediaPages: View {
                     if viewModel.showMinis {
                         ScrollView(.horizontal) {
                             HStack(spacing: 2) {
-                                ForEach(viewModel.attachments.enumerated().map({ $0 }), id: \.offset) { (index, attachment) in
-                                    AttachmentCell(attachment: attachment) { _ in
+                                ForEach(viewModel.attachments
+                                    .filter { $0.fullUploadStatus == nil || $0.fullUploadStatus == .complete  }
+                                    .enumerated().map({ $0 }), id: \.offset) { (index, attachment) in
+                                    AttachmentCell(attachment: attachment, size: CGSize(width: 100, height: 100)) { _,_ in
                                         withAnimation {
                                             viewModel.index = index
                                         }
                                     }
-                                    .frame(width: 100, height: 100)
                                     .cornerRadius(4)
                                     .clipped()
                                     .id(index)
@@ -77,11 +77,11 @@ struct FullscreenMediaPages: View {
                             }
                         }
                         .padding([.top, .horizontal], 12)
-                        .background(Color.black)
+                        .background(theme.colors.mainBG)
                         .onAppear {
                             proxy.scrollTo(viewModel.index)
                         }
-                        .onChange(of: viewModel.index) { newValue in
+                        .onChange(of: viewModel.index) { _, newValue in
                             withAnimation {
                                 proxy.scrollTo(newValue, anchor: .center)
                             }
@@ -96,7 +96,7 @@ struct FullscreenMediaPages: View {
         .overlay(alignment: .top) {
             if viewModel.showMinis {
                 Text("\(viewModel.index + 1)/\(viewModel.attachments.count)")
-                    .foregroundColor(.white)
+                    .foregroundColor(theme.colors.mainText)
                     .offset(y: safeAreaInsets.top)
             }
         }
@@ -104,9 +104,10 @@ struct FullscreenMediaPages: View {
             if viewModel.showMinis {
                 Button(action: onClose) {
                     theme.images.mediaPicker.cross
+                        .imageScale(.large)
                         .padding(5)
                 }
-                .tint(.white)
+                .tint(theme.colors.mainText)
                 .padding(.leading, 15)
                 .offset(y: safeAreaInsets.top - 5)
             }

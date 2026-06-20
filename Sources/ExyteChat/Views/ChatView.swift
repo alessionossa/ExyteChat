@@ -6,126 +6,84 @@
 //
 
 import SwiftUI
-import FloatingButton
-import SwiftUIIntrospect
 
-public enum ChatType {
+public enum ChatType: CaseIterable, Sendable {
     case conversation // the latest message is at the bottom, new messages appear from the bottom
     case comments // the latest message is at the top, new messages appear from the top
 }
 
-public enum ReplyMode {
+public enum ReplyMode: CaseIterable, Sendable {
     case quote // when replying to message A, new message will appear as the newest message, quoting message A in its body
     case answer // when replying to message A, new message with appear direclty below message A as a separate cell without duplicating message A in its body
 }
 
 public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: View {
 
-    /// To build a custom message view use the following parameters passed by this closure:
-    /// - message containing user, attachments, etc.
-    /// - position of message in its continuous group of messages from the same user
-    /// - position of message in its continuous group of comments (only works for .answer ReplyMode, nil for .quote mode)
-    /// - closure to show message context menu
-    /// - closure to pass user interaction, .reply for example
-    /// - pass attachment to this closure to use ChatView's fullscreen media viewer
-    public typealias MessageBuilderClosure = ((
-        _ message: Message,
-        _ positionInGroup: PositionInUserGroup,
-        _ positionInCommentsGroup: CommentsPosition?,
-        _ showContextMenuClosure: @escaping () -> Void,
-        _ messageActionClosure: @escaping (Message, DefaultMessageMenuAction) -> Void,
-        _ showAttachmentClosure: @escaping (Attachment) -> Void
-    ) -> MessageContent)
-
-    /// To define custom message menu actions declare an enum conforming to MessageMenuAction. The library will show your custom menu options on long tap on message. Once the action is selected the following callback will be called:
-    /// - action selected by the user from the menu. NOTE: when declaring this variable, specify its type (your custom descendant of MessageMenuAction) explicitly
-    /// - a closure taking a case of default implementation of MessageMenuAction which provides simple actions handlers; you call this closure passing the selected message and choosing one of the default actions if you need them; or you can write a custom implementation for all your actions, in that case just ignore this closure
-    /// - message for which the menu is displayed
-    /// When implementing your own MessageMenuActionClosure, write a switch statement passing through all the cases of your MessageMenuAction, inside each case write your own action handler, or call the default one. NOTE: not all default actions work out of the box - e.g. for .edit you'll still need to provide a closure to save the edited text on your BE. Please see CommentsExampleView in ChatExample project for MessageMenuActionClosure usage example.
-    public typealias MessageMenuActionClosure = (
-        _ selectedMenuAction: MenuAction,
-        _ defaultActionClosure: @escaping (Message, DefaultMessageMenuAction) -> Void,
-        _ message: Message
-    ) -> Void
-
     /// User and MessageId
     public typealias TapAvatarClosure = (User, String) -> ()
 
-    @Environment(\.safeAreaInsets) private var safeAreaInsets
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.chatTheme) private var theme
 
     // MARK: - Parameters
 
-    let type: ChatType
-    let sections: [MessagesSection]
-    let ids: [String]
-
-    // MARK: - View builders
-
     /// provide custom message view builder
-    var messageBuilder: MessageBuilderClosure? = nil
+    /// To customize only some messages while keeping the default style for others,
+    /// use `messageBuilder` and return your custom view for the messages you want to style, and `params.defaultMessageView()` for the rest.
+    /// This way you can mix your custom message view with ExyteChat's built-in styling in the same chat.
+    /// ```swift
+    /// ChatView(messages: viewModel.messages) { params in
+    ///     if needsCustomUI(params.message) {
+    ///         MyCustomMessageView(message: params.message)
+    ///     } else {
+    ///         params.defaultMessageView()
+    ///     }
+    /// }
+    /// ```
+    @ViewBuilder var messageBuilder: MessageBuilderParamsClosure
 
     /// message menu customization: create enum complying to MessageMenuAction and pass a closure processing your enum cases
-    var messageMenuAction: MessageMenuActionClosure?
+    var messageMenuAction: MessageMenuActionClosure
+
+    var type: ChatType
+    var sections: [MessagesSection]
+    var ids: [String]
+
+    // MARK: - Simple view builders
 
     /// a header for the whole chat, which will scroll together with all the messages and headers
     var mainHeaderBuilder: (()->AnyView)?
 
     /// date section header builder
-    var headerBuilder: ((Date)->AnyView)?
+    var dateHeaderBuilder: ((Date)->AnyView)?
 
     // MARK: - Customization
 
-    var showDateHeaders: Bool = true
-    var isScrollEnabled: Bool = true
-    var avatarSize: CGFloat = 32
-    var messageUseMarkdown: Bool = false
-    var showMessageMenuOnLongPress: Bool = true
-    var showNetworkConnectionProblem: Bool = false
-    var tapAvatarClosure: TapAvatarClosure?
-    var chatTitle: String?
-    var paginationHandler: PaginationHandler?
-    var showMessageTimeView = true
-    var messageFont = UIFontMetrics.default.scaledFont(for: UIFont.systemFont(ofSize: 15))
-    var recorderSettings: RecorderSettings = RecorderSettings()
+    var chatCustomizationParameters = ChatCustomizationParameters()
+    var messageCustomizationParameters = MessageCustomizationParameters()
+
+    // MARK: - State
 
     @StateObject private var viewModel = ChatViewModel()
     @StateObject private var globalFocusState = GlobalFocusState()
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var keyboardState = KeyboardState()
 
+    @State private var pendingScrollTo: ScrollToParams?
     @State private var isScrolledToBottom: Bool = true
-    @State private var shouldScrollToTop: () -> () = {}
-
-    @State private var isShowingMenu = false
-    @State private var needsScrollView = false
-    @State private var readyToShowScrollView = false
-    @State private var menuButtonsSize: CGSize = .zero
     @State private var tableContentHeight: CGFloat = 0
-    @State private var inputViewSize = CGSize.zero
-    @State private var cellFrames = [String: CGRect]()
-    @State private var menuCellPosition: CGPoint = .zero
-    @State private var menuBgOpacity: CGFloat = 0
-    @State private var menuCellOpacity: CGFloat = 0
-    @State private var menuScrollView: UIScrollView?
 
-    public init(messages: [Message],
-                chatType: ChatType = .conversation,
-                replyMode: ReplyMode = .quote,
-                messageBuilder: @escaping MessageBuilderClosure,
-                messageMenuAction: MessageMenuActionClosure?) {
-        self.type = chatType
-        self.sections = ChatView.mapMessages(messages, chatType: chatType, replyMode: replyMode)
-        self.ids = messages.map { $0.id }
-        self.messageBuilder = messageBuilder
-        self.messageMenuAction = messageMenuAction
-    }
+    @State private var cellFrames = [String: CGRect]()
+    /// Used to prevent the MainView from responding to keyboard changes while the Menu is active
+    @State private var isShowingMenu = false
 
     public var body: some View {
         mainView
-            .background(theme.colors.mainBackground)
+            .background(chatBackground())
             .environmentObject(keyboardState)
-
+            .onChange(of: chatCustomizationParameters.scrollToParams) { scrollToParams in
+                self.pendingScrollTo = scrollToParams
+            }
             .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
                 let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
                 let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
@@ -147,29 +105,31 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
     }
 
     var mainView: some View {
-        VStack {
-            if !networkMonitor.isConnected, !networkMonitor.isConnected {
+        VStack(spacing: 0) {
+            if chatCustomizationParameters.showNetworkConnectionProblem, !networkMonitor.isConnected {
                 waitingForNetwork
             }
 
             listWithButton
         }
+        // Used to prevent ChatView movement during Emoji Keyboard invocation
+        .ignoresSafeArea(isShowingMenu ? .keyboard : [])
     }
 
     var waitingForNetwork: some View {
         VStack {
             Rectangle()
-                .foregroundColor(.black.opacity(0.12))
+                .foregroundColor(theme.colors.mainText.opacity(0.12))
                 .frame(height: 1)
             HStack {
                 Spacer()
                 Image("waiting", bundle: .current)
-                Text("Waiting for network")
+                Text(chatCustomizationParameters.localization.waitingForNetwork)
                 Spacer()
             }
             .padding(.top, 6)
             Rectangle()
-                .foregroundColor(.black.opacity(0.12))
+                .foregroundColor(theme.colors.mainText.opacity(0.12))
                 .frame(height: 1)
         }
         .padding(.top, 8)
@@ -182,15 +142,18 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
             ZStack(alignment: .bottomTrailing) {
                 list
 
-                if !isScrolledToBottom {
+                if chatCustomizationParameters.showScrollToBottomButton, !isScrolledToBottom {
                     Button {
-                        NotificationCenter.default.post(name: .onScrollToBottom, object: nil)
+                        self.pendingScrollTo = ScrollToParams(.newestMessage) // Cannot assign to property: 'self' is immutable
                     } label: {
                         theme.images.scrollToBottom
                             .frame(width: 40, height: 40)
-                            .circleBackground(theme.colors.friendMessage)
+                            .circleBackground(theme.colors.messageFriendBG)
+                            .foregroundStyle(theme.colors.sendButtonBackground)
+                            .shadow(color: .primary.opacity(0.1), radius: 2, y: 1)
                     }
-                    .padding(8)
+                    .padding(.trailing, MessageView.horizontalScreenEdgePadding)
+                    .padding(.bottom, 8)
                 }
             }
 
@@ -201,255 +164,165 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
 
     @ViewBuilder
     var list: some View {
-        UIList(viewModel: viewModel,
-               isScrolledToBottom: $isScrolledToBottom,
-               shouldScrollToTop: $shouldScrollToTop,
-               tableContentHeight: $tableContentHeight,
-               messageBuilder: messageBuilder,
-               mainHeaderBuilder: mainHeaderBuilder,
-               headerBuilder: headerBuilder,
-               type: type,
-               showDateHeaders: showDateHeaders,
-               isScrollEnabled: isScrollEnabled,
-               avatarSize: avatarSize,
-               showMessageMenuOnLongPress: showMessageMenuOnLongPress,
-               tapAvatarClosure: tapAvatarClosure,
-               paginationHandler: paginationHandler,
-               messageUseMarkdown: messageUseMarkdown,
-               showMessageTimeView: showMessageTimeView,
-               messageFont: messageFont,
-               sections: sections,
-               ids: ids
+        UIList(
+            // MARK: - Core
+
+            viewModel: viewModel,
+
+            pendingScrollTo: $pendingScrollTo,
+            isScrolledToBottom: $isScrolledToBottom,
+            tableContentHeight: $tableContentHeight,
+
+            // MARK: - View builders
+
+            messageBuilder: messageBuilder,
+            mainHeaderBuilder: mainHeaderBuilder,
+            dateHeaderBuilder: dateHeaderBuilder,
+
+            // MARK: - Data / type
+
+            type: type,
+            sections: sections,
+            ids: ids,
+
+            // MARK: - Customization
+
+            chatParams: chatCustomizationParameters,
+            messageParams: messageCustomizationParameters
         )
-        .applyIf(!isScrollEnabled) {
+        .applyIf(!chatCustomizationParameters.isScrollEnabled) {
             $0.frame(height: tableContentHeight)
         }
         .onStatusBarTap {
-            shouldScrollToTop()
+            self.pendingScrollTo = ScrollToParams(.oldestMessage)
         }
         .transparentNonAnimatingFullScreenCover(item: $viewModel.messageMenuRow) {
             if let row = viewModel.messageMenuRow {
-                ZStack(alignment: .topLeading) {
-                    theme.colors.messageMenuBackground
-                        .opacity(menuBgOpacity)
-                        .ignoresSafeArea(.all)
-
-                    if needsScrollView {
-                        ScrollView {
-                            messageMenu(row)
-                        }
-                        .introspect(.scrollView, on: .iOS(.v16, .v17, .v18)) { scrollView in
-                            DispatchQueue.main.async {
-                                self.menuScrollView = scrollView
-                            }
-                        }
-                        .opacity(readyToShowScrollView ? 1 : 0)
-                    }
-                    if !needsScrollView || !readyToShowScrollView {
-                        messageMenu(row)
-                            .position(menuCellPosition)
-                    }
-                }
-                .onAppear {
-                    DispatchQueue.main.async {
-                        if let frame = cellFrames[row.id] {
-                            showMessageMenu(frame)
-                        }
-                    }
-                }
-                .onTapGesture {
-                    hideMessageMenu()
+                messageMenu(row)
+                    .onAppear(perform: showMessageMenu)
+            }
+        }
+        .onPreferenceChange(MessageMenuPreferenceKey.self) { frames in
+            DispatchQueue.main.async {
+                if self.cellFrames != frames {
+                    self.cellFrames = frames
                 }
             }
         }
-        .onPreferenceChange(MessageMenuPreferenceKey.self) {
-            self.cellFrames = $0
-        }
-        .onTapGesture {
-            globalFocusState.focus = nil
-        }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                globalFocusState.focus = nil
+            }
+        )
         .onAppear {
             viewModel.globalFocusState = globalFocusState
         }
     }
 
     func messageMenu(_ row: MessageRow) -> some View {
-        MessageMenu(
+        let cellFrame = cellFrames[row.id] ?? .zero
+
+        return MessageMenu(
+            viewModel: viewModel,
             isShowingMenu: $isShowingMenu,
-            menuButtonsSize: $menuButtonsSize,
-            alignment: row.message.user.isCurrentUser ? .right : .left,
-            leadingPadding: avatarSize + MessageView.horizontalAvatarPadding * 2,
-            trailingPadding: MessageView.statusViewSize + MessageView.horizontalStatusPadding,
-            onAction: menuActionClosure(row.message)) {
-                ChatMessageView(viewModel: viewModel, messageBuilder: messageBuilder, row: row, chatType: type, avatarSize: avatarSize, tapAvatarClosure: nil, messageUseMarkdown: messageUseMarkdown, isDisplayingMessageMenu: true, showMessageTimeView: showMessageTimeView, messageFont: messageFont)
-                    .onTapGesture {
-                        hideMessageMenu()
-                    }
+            message: row.message,
+            cellFrame: cellFrame,
+            alignment: menuAlignment(row.message, chatType: type),
+            positionInUserGroup: row.positionInUserGroup,
+            leadingPadding: messageCustomizationParameters.avatarSize + MessageView.horizontalScreenEdgePadding + MessageView.horizontalSpacing,
+            trailingPadding: MessageView.statusViewWidth + MessageView.horizontalScreenEdgePadding + MessageView.horizontalSpacing,
+            font: messageCustomizationParameters.font,
+            animationDuration: chatCustomizationParameters.messageMenuAnimationDuration,
+            onAction: menuActionClosure(row.message),
+            reactionHandler: MessageMenu.ReactionConfig(
+                delegate: chatCustomizationParameters.reactionDelegate,
+                didReact: reactionClosure(row.message)
+            )
+        ) {
+            ChatMessageView(
+                viewModel: viewModel,
+                messageBuilder: messageBuilder,
+                row: row,
+                chatType: type,
+                messageParams: messageCustomizationParameters,
+                isDisplayingMessageMenu: true
+            )
+            .onTapGesture {
+                hideMessageMenu()
             }
-            .frame(height: menuButtonsSize.height + (cellFrames[row.id]?.height ?? 0), alignment: .top)
-            .opacity(menuCellOpacity)
+        }
+    }
+
+    /// Determines the message menu alignment based on ChatType and message sender.
+    private func menuAlignment(_ message: Message, chatType: ChatType) -> MessageMenuAlignment {
+        switch chatType {
+        case .conversation:
+            return message.user.isCurrentUser ? .right : .left
+        case .comments:
+            return .left
+        }
+    }
+
+    /// Our default reactionCallback flow if the user supports Reactions by implementing the didReactToMessage closure
+    private func reactionClosure(_ message: Message) -> (ReactionType?) -> () {
+        { reactionType in
+            Task { @MainActor in
+                // Hide the menu
+                hideMessageMenu()
+                // Send the draft reaction
+                guard let reactionDelegate = chatCustomizationParameters.reactionDelegate, let reactionType else { return }
+                reactionDelegate.didReact(to: message, reaction: DraftReaction(messageID: message.id, type: reactionType))
+            }
+        }
     }
 
     func menuActionClosure(_ message: Message) -> (MenuAction) -> () {
-        if let messageMenuAction {
-            return { action in
-                hideMessageMenu()
-                messageMenuAction(action, viewModel.messageMenuAction(), message)
-            }
-        } else if MenuAction.self == DefaultMessageMenuAction.self {
-            return { action in
-                hideMessageMenu()
-                viewModel.messageMenuActionInternal(message: message, action: action as! DefaultMessageMenuAction)
-            }
+        { action in
+            hideMessageMenu()
+            messageMenuAction(action, viewModel.messageMenuAction(), message)
         }
-        return { _ in }
     }
 
-    func showMessageMenu(_ cellFrame: CGRect) {
-        DispatchQueue.main.async {
-            let wholeMenuHeight = menuButtonsSize.height + cellFrame.height
-            let needsScrollTemp = wholeMenuHeight > UIScreen.main.bounds.height - safeAreaInsets.top - safeAreaInsets.bottom
-
-            menuCellPosition = CGPoint(x: cellFrame.midX, y: cellFrame.minY + wholeMenuHeight/2 - safeAreaInsets.top)
-            menuCellOpacity = 1
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                var finalCellPosition = menuCellPosition
-                if needsScrollTemp ||
-                    cellFrame.minY + wholeMenuHeight + safeAreaInsets.bottom > UIScreen.main.bounds.height {
-
-                    finalCellPosition = CGPoint(x: cellFrame.midX, y: UIScreen.main.bounds.height - wholeMenuHeight/2 - safeAreaInsets.top - safeAreaInsets.bottom
-                    )
-                }
-
-                withAnimation(.linear(duration: 0.1)) {
-                    menuBgOpacity = 0.9
-                    menuCellPosition = finalCellPosition
-                    isShowingMenu = true
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                needsScrollView = needsScrollTemp
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                readyToShowScrollView = true
-                if let menuScrollView = menuScrollView {
-                    menuScrollView.contentOffset = CGPoint(x: 0, y: menuScrollView.contentSize.height - menuScrollView.frame.height + safeAreaInsets.bottom)
-                }
-            }
-        }
+    func showMessageMenu() {
+        isShowingMenu = true
     }
 
     func hideMessageMenu() {
-        menuScrollView = nil
-        withAnimation(.linear(duration: 0.1)) {
-            menuCellOpacity = 0
-            menuBgOpacity = 0
+        viewModel.messageMenuRow = nil
+        viewModel.messageFrame = .zero
+        isShowingMenu = false
+    }
+
+    private func chatBackground() -> some View {
+        Group {
+            if let background = theme.images.background {
+                switch (isLandscape(), colorScheme) {
+                case (true, .dark):
+                    background.landscapeBackgroundDark
+                        .resizable()
+                        .ignoresSafeArea(background.safeAreaRegions, edges: background.safeAreaEdges)
+                case (true, .light):
+                    background.landscapeBackgroundLight
+                        .resizable()
+                        .ignoresSafeArea(background.safeAreaRegions, edges: background.safeAreaEdges)
+                case (false, .dark):
+                    background.portraitBackgroundDark
+                        .resizable()
+                        .ignoresSafeArea(background.safeAreaRegions, edges: background.safeAreaEdges)
+                case (false, .light):
+                    background.portraitBackgroundLight
+                        .resizable()
+                        .ignoresSafeArea(background.safeAreaRegions, edges: background.safeAreaEdges)
+                default:
+                    theme.colors.mainBG
+                }
+            } else {
+                theme.colors.mainBG
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            viewModel.messageMenuRow = nil
-            isShowingMenu = false
-            needsScrollView = false
-            readyToShowScrollView = false
-        }
-    }
-}
-
-public extension ChatView {
-
-    func mainHeaderBuilder<V: View>(_ builder: @escaping ()->V) -> ChatView {
-        var view = self
-        view.mainHeaderBuilder = {
-            AnyView(builder())
-        }
-        return view
     }
 
-    func headerBuilder<V: View>(_ builder: @escaping (Date)->V) -> ChatView {
-        var view = self
-        view.headerBuilder = { date in
-            AnyView(builder(date))
-        }
-        return view
+    private func isLandscape() -> Bool {
+        UIDevice.current.orientation.isLandscape
     }
-
-    func showDateHeaders(_ showDateHeaders: Bool) -> ChatView {
-        var view = self
-        view.showDateHeaders = showDateHeaders
-        return view
-    }
-
-    func isScrollEnabled(_ isScrollEnabled: Bool) -> ChatView {
-        var view = self
-        view.isScrollEnabled = isScrollEnabled
-        return view
-    }
-
-    func showMessageMenuOnLongPress(_ show: Bool) -> ChatView {
-        var view = self
-        view.showMessageMenuOnLongPress = show
-        return view
-    }
-
-    func showNetworkConnectionProblem(_ show: Bool) -> ChatView {
-        var view = self
-        view.showNetworkConnectionProblem = show
-        return view
-    }
-
-    /// when user scrolls up to `pageSize`-th meassage, call the handler function, so user can load more messages
-    /// NOTE: doesn't work well with `isScrollEnabled` false
-    func enableLoadMore(pageSize: Int, _ handler: @escaping ChatPaginationClosure) -> ChatView {
-        var view = self
-        view.paginationHandler = PaginationHandler(handleClosure: handler, pageSize: pageSize)
-        return view
-    }
-
-    @available(*, deprecated)
-    func chatNavigation(title: String, status: String? = nil, cover: URL? = nil) -> some View {
-        var view = self
-        view.chatTitle = title
-        return view.modifier(ChatNavigationModifier(title: title, status: status, cover: cover))
-    }
-
-    // makes sense only for built-in message view
-
-    func avatarSize(avatarSize: CGFloat) -> ChatView {
-        var view = self
-        view.avatarSize = avatarSize
-        return view
-    }
-
-    func tapAvatarClosure(_ closure: @escaping TapAvatarClosure) -> ChatView {
-        var view = self
-        view.tapAvatarClosure = closure
-        return view
-    }
-
-    func messageUseMarkdown(messageUseMarkdown: Bool) -> ChatView {
-        var view = self
-        view.messageUseMarkdown = messageUseMarkdown
-        return view
-    }
-
-    func showMessageTimeView(_ isShow: Bool) -> ChatView {
-        var view = self
-        view.showMessageTimeView = isShow
-        return view
-    }
-
-    func setMessageFont(_ font: UIFont) -> ChatView {
-        var view = self
-        view.messageFont = font
-        return view
-    }
-
-    // makes sense only for built-in input view
-
-    func setRecorderSettings(_ settings: RecorderSettings) -> ChatView {
-        var view = self
-        view.recorderSettings = settings
-        return view
-    }
-
 }

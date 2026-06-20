@@ -13,14 +13,19 @@ struct AttachmentsPage: View {
 
     var body: some View {
         if attachment.type == .image {
-            CachedAsyncImage(url: attachment.full, urlCache: .imageCache) { phase in
-                switch phase {
-                case let .success(image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                default:
-                    ActivityIndicator()
+            ZoomableContainer {
+                CachedAsyncImage(
+                    url: attachment.full,
+                    cacheKey: attachment.fullCacheKey
+                ) { phase in
+                    switch phase {
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    default:
+                        ActivityIndicator()
+                    }
                 }
             }
         } else if attachment.type == .video {
@@ -31,7 +36,7 @@ struct AttachmentsPage: View {
                 .frame(minWidth: 100, minHeight: 100)
                 .frame(maxHeight: 200)
                 .overlay {
-                    Text("Unknown")
+                    Text("Unknown", bundle: .module)
                 }
         }
     }

@@ -6,26 +6,30 @@
 //
 
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 
-final class Recorder {
+final actor Recorder {
 
     // duration and waveform samples
-    typealias ProgressHandler = (Double, [CGFloat]) -> Void
+    typealias ProgressHandler = @Sendable (Double, [CGFloat]) -> Void
 
     private let audioSession = AVAudioSession()
     private var audioRecorder: AVAudioRecorder?
     private var audioTimer: Timer?
 
     private var soundSamples: [CGFloat] = []
-    internal var recorderSettings = RecorderSettings()
+    private var recorderSettings = RecorderSettings()
 
     var isAllowedToRecordAudio: Bool {
-        audioSession.recordPermission == .granted
+        AVAudioApplication.shared.recordPermission == .granted
     }
 
     var isRecording: Bool {
         audioRecorder?.isRecording ?? false
+    }
+
+    func setRecorderSettings(_ recorderSettings: RecorderSettings) {
+        self.recorderSettings = recorderSettings
     }
 
     func startRecording(durationProgressHandler: @escaping ProgressHandler) async -> URL? {
@@ -42,18 +46,26 @@ final class Recorder {
     
     private func startRecordingInternal(_ durationProgressHandler: @escaping ProgressHandler) -> URL? {
         let settings: [String : Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVFormatIDKey: Int(recorderSettings.audioFormatID),
             AVSampleRateKey: recorderSettings.sampleRate,
             AVNumberOfChannelsKey: recorderSettings.numberOfChannels,
+            AVEncoderBitRateKey: recorderSettings.encoderBitRateKey,
             AVLinearPCMBitDepthKey: recorderSettings.linearPCMBitDepth,
+            AVLinearPCMIsFloatKey: recorderSettings.linearPCMIsFloatKey,
+            AVLinearPCMIsBigEndianKey: recorderSettings.linearPCMIsBigEndianKey,
+            AVLinearPCMIsNonInterleaved: recorderSettings.linearPCMIsNonInterleaved,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
         soundSamples = []
-        let recordingUrl = FileManager.tempAudioFile
+        guard let fileExt = fileExtension(for: recorderSettings.audioFormatID) else{
+            return nil
+        }
+        let recordingUrl = FileManager.tempDirPath.appendingPathComponent(UUID().uuidString + fileExt)
 
         do {
-            try audioSession.setCategory(.record, mode: .default)
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat)
+            try audioSession.overrideOutputAudioPort(.speaker)
             try audioSession.setActive(true)
             audioRecorder = try AVAudioRecorder(url: recordingUrl, settings: settings)
             audioRecorder?.isMeteringEnabled = true
@@ -61,8 +73,14 @@ final class Recorder {
             durationProgressHandler(0.0, [])
 
             DispatchQueue.main.async { [weak self] in
-                self?.audioTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                    self?.onTimer(durationProgressHandler)
+                self?.audioTimer?.invalidate()
+                self?.audioTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                    Task {
+                        await self?.onTimer(durationProgressHandler)
+                    }
+                }
+                if let timer = self?.audioTimer {
+                    RunLoop.main.add(timer, forMode: .common)
                 }
             }
 
@@ -91,25 +109,61 @@ final class Recorder {
         audioTimer?.invalidate()
         audioTimer = nil
     }
+
+    private func fileExtension(for formatID: AudioFormatID) -> String? {
+        switch formatID {
+        case kAudioFormatMPEG4AAC:
+            return ".aac"
+        case kAudioFormatLinearPCM:
+            return ".wav"
+        case kAudioFormatAppleLossless:
+            return ".m4a"
+        case kAudioFormatFLAC:
+            return ".flac"
+        case kAudioFormatULaw:
+            return ".wav"
+        case kAudioFormatALaw:
+            return ".wav"
+        default:
+            return nil
+        }
+    }
 }
 
 public struct RecorderSettings : Codable,Hashable {
-    
+    var audioFormatID: AudioFormatID
     var sampleRate: CGFloat
     var numberOfChannels: Int
+    var encoderBitRateKey: Int
+    // pcm
     var linearPCMBitDepth: Int
-    
-    public init(sampleRate: CGFloat = 12000, numberOfChannels: Int = 1, linearPCMBitDepth: Int = 16) {
+    var linearPCMIsFloatKey: Bool
+    var linearPCMIsBigEndianKey: Bool
+    var linearPCMIsNonInterleaved: Bool
+
+    public init(audioFormatID: AudioFormatID = kAudioFormatMPEG4AAC,
+                sampleRate: CGFloat = 12000,
+                numberOfChannels: Int = 1,
+                encoderBitRateKey: Int = 0,
+                linearPCMBitDepth: Int = 16,
+                linearPCMIsFloatKey: Bool = false,
+                linearPCMIsBigEndianKey: Bool = false,
+                linearPCMIsNonInterleaved: Bool = false) {
+        self.audioFormatID = audioFormatID
         self.sampleRate = sampleRate
         self.numberOfChannels = numberOfChannels
+        self.encoderBitRateKey = encoderBitRateKey
         self.linearPCMBitDepth = linearPCMBitDepth
+        self.linearPCMIsFloatKey = linearPCMIsFloatKey
+        self.linearPCMIsBigEndianKey = linearPCMIsBigEndianKey
+        self.linearPCMIsNonInterleaved = linearPCMIsNonInterleaved
     }
 }
 
 extension AVAudioSession {
     func requestRecordPermission() async -> Bool {
         await withCheckedContinuation { continuation in
-            requestRecordPermission { granted in
+            AVAudioApplication.requestRecordPermission { granted in
                 continuation.resume(returning: granted)
             }
         }

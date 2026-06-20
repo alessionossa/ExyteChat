@@ -15,39 +15,53 @@ struct MessageStatusView: View {
         Group {
             switch status {
             case .sending:
-                theme.images.message.sending
-                    .resizable()
-                    .rotationEffect(.degrees(90))
-                    .foregroundColor(theme.colors.grayStatus)
+                statusImageStyled(image: theme.images.message.sending, color: theme.colors.statusGray)
             case .sent:
-                theme.images.message.checkmarks
-                    .resizable()
-                    .foregroundColor(theme.colors.grayStatus)
+                statusImageStyled(image: theme.images.message.sent, color: theme.colors.statusGray)
+            case .delivered:
+                statusImageStyled(image: theme.images.message.delivered, color: theme.colors.statusGray)
             case .read:
-                theme.images.message.checkmarks
-                    .resizable()
-                    .foregroundColor(theme.colors.myMessage)
+                statusImageStyled(image: theme.images.message.read, color: theme.colors.messageReadStatus)
             case .error:
-                Button {
-                    onRetry()
-                } label: {
-                    theme.images.message.error
-                        .resizable()
+                Button(action: onRetry) {
+                    statusImageStyled(image: theme.images.message.error, color: theme.colors.statusError)
                 }
-                .foregroundColor(theme.colors.errorStatus)
             }
         }
-        .viewSize(MessageView.statusViewSize)
-        .padding(.trailing, MessageView.horizontalStatusPadding)
+    }
+
+    private func statusImageStyled(image: Image, color: Color) -> some View {
+        image
+            .renderingMode(.template)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .foregroundColor(color)
+            .frame(width: 40)
     }
 }
 
 struct SwiftUIView_Previews: PreviewProvider {
+    
     static var previews: some View {
         VStack {
             MessageStatusView(status: .sending, onRetry: {})
             MessageStatusView(status: .sent, onRetry: {})
+            MessageStatusView(status: .delivered, onRetry: {})
             MessageStatusView(status: .read, onRetry: {})
+            MessageStatusView(status: .error(emptyDraft()), onRetry: {})
         }
+    }
+
+    private static func emptyDraft() -> DraftMessage {
+        return DraftMessage(
+            id: nil,
+            text: "",
+            medias: [],
+            giphyMedia: nil,
+            recording: nil,
+            replyMessage: nil,
+            createdAt: Date()
+        )
+
     }
 }

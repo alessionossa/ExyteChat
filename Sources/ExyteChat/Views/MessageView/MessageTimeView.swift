@@ -5,35 +5,31 @@
 import SwiftUI
 
 struct MessageTimeView: View {
+    @Environment(\.chatTheme) var theme
 
     let text: String
-    let isCurrentUser: Bool
-    var chatTheme: ChatTheme
+    let userType: UserType
 
     var body: some View {
         Text(text)
-            .font(.caption)
-            .foregroundColor(isCurrentUser ? chatTheme.colors.myMessageTime : chatTheme.colors.frientMessageTime)
+            .foregroundColor(theme.colors.messageTimeText(userType))
     }
 }
 
 struct MessageTimeWithCapsuleView: View {
-
     let text: String
     let isCurrentUser: Bool
-    var chatTheme: ChatTheme
 
     var body: some View {
         Text(text)
-            .font(.caption)
-            .foregroundColor(chatTheme.colors.timeCapsuleForeground)
+            .foregroundColor(.white)
             .opacity(0.8)
             .padding(.top, 4)
             .padding(.bottom, 4)
             .padding(.horizontal, 8)
             .background {
                 Capsule()
-                    .fill(chatTheme.colors.timeCapsuleBackground)
+                    .foregroundColor(.black.opacity(0.4))
             }
     }
 }
