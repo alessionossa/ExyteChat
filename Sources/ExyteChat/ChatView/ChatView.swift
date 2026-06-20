@@ -8,9 +8,6 @@
 import SwiftUI
 import FloatingButton
 import SwiftUIIntrospect
-import ExyteMediaPicker
-
-public typealias MediaPickerParameters = SelectionParamsHolder
 
 public enum ChatType {
     case conversation // the latest message is at the bottom, new messages appear from the bottom
@@ -22,7 +19,7 @@ public enum ReplyMode {
     case answer // when replying to message A, new message with appear direclty below message A as a separate cell without duplicating message A in its body
 }
 
-public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction: MessageMenuAction>: View {
+public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: View {
 
     /// To build a custom message view use the following parameters passed by this closure:
     /// - message containing user, attachments, etc.
@@ -40,21 +37,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
         _ showAttachmentClosure: @escaping (Attachment) -> Void
     ) -> MessageContent)
 
-    /// To build a custom input view use the following parameters passed by this closure:
-    /// - binding to the text in input view
-    /// - InputViewAttachments to store the attachments from external pickers
-    /// - current input view state: .message for main input view mode and .signature for input view in media picker mode
-    /// - closure to pass user interaction, .recordAudioTap for example
-    /// - dismiss keyboard closure
-    public typealias InputViewBuilderClosure = (
-        _ text: Binding<String>,
-        _ attachments: InputViewAttachments,
-        _ inputViewState: InputViewState,
-        _ inputViewStyle: InputViewStyle,
-        _ inputViewActionClosure: @escaping (InputViewAction) -> Void,
-        _ dismissKeyboardClosure: ()->()
-    ) -> InputViewContent
-
     /// To define custom message menu actions declare an enum conforming to MessageMenuAction. The library will show your custom menu options on long tap on message. Once the action is selected the following callback will be called:
     /// - action selected by the user from the menu. NOTE: when declaring this variable, specify its type (your custom descendant of MessageMenuAction) explicitly
     /// - a closure taking a case of default implementation of MessageMenuAction which provides simple actions handlers; you call this closure passing the selected message and choosing one of the default actions if you need them; or you can write a custom implementation for all your actions, in that case just ignore this closure
@@ -71,28 +53,20 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
 
     @Environment(\.safeAreaInsets) private var safeAreaInsets
     @Environment(\.chatTheme) private var theme
-    @Environment(\.mediaPickerTheme) private var pickerTheme
 
     // MARK: - Parameters
 
     let type: ChatType
     let sections: [MessagesSection]
     let ids: [String]
-    let didSendMessage: (DraftMessage) -> Void
 
     // MARK: - View builders
 
     /// provide custom message view builder
     var messageBuilder: MessageBuilderClosure? = nil
 
-    /// provide custom input view builder
-    var inputViewBuilder: InputViewBuilderClosure? = nil
-
     /// message menu customization: create enum complying to MessageMenuAction and pass a closure processing your enum cases
     var messageMenuAction: MessageMenuActionClosure?
-
-    /// content to display in between the chat list view and the input view
-    var betweenListAndInputViewBuilder: (()->AnyView)?
 
     /// a header for the whole chat, which will scroll together with all the messages and headers
     var mainHeaderBuilder: (()->AnyView)?
@@ -102,7 +76,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
 
     // MARK: - Customization
 
-    var isListAboveInputView: Bool = true
     var showDateHeaders: Bool = true
     var isScrollEnabled: Bool = true
     var avatarSize: CGFloat = 32
@@ -110,17 +83,13 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     var showMessageMenuOnLongPress: Bool = true
     var showNetworkConnectionProblem: Bool = false
     var tapAvatarClosure: TapAvatarClosure?
-    var mediaPickerSelectionParameters: MediaPickerParameters?
-    var orientationHandler: MediaPickerOrientationHandler = {_ in}
     var chatTitle: String?
     var paginationHandler: PaginationHandler?
     var showMessageTimeView = true
     var messageFont = UIFontMetrics.default.scaledFont(for: UIFont.systemFont(ofSize: 15))
-    var availablelInput: AvailableInputType = .full
     var recorderSettings: RecorderSettings = RecorderSettings()
 
     @StateObject private var viewModel = ChatViewModel()
-    @StateObject private var inputViewModel = InputViewModel()
     @StateObject private var globalFocusState = GlobalFocusState()
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var keyboardState = KeyboardState()
@@ -143,16 +112,12 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
                 replyMode: ReplyMode = .quote,
-                didSendMessage: @escaping (DraftMessage) -> Void,
                 messageBuilder: @escaping MessageBuilderClosure,
-                inputViewBuilder: @escaping InputViewBuilderClosure,
                 messageMenuAction: MessageMenuActionClosure?) {
         self.type = chatType
-        self.didSendMessage = didSendMessage
         self.sections = ChatView.mapMessages(messages, chatType: chatType, replyMode: replyMode)
         self.ids = messages.map { $0.id }
         self.messageBuilder = messageBuilder
-        self.inputViewBuilder = inputViewBuilder
         self.messageMenuAction = messageMenuAction
     }
 
@@ -179,17 +144,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     .ignoresSafeArea()
                 }
             }
-
-            .fullScreenCover(isPresented: $inputViewModel.showPicker) {
-                AttachmentsEditor(inputViewModel: inputViewModel, inputViewBuilder: inputViewBuilder, chatTitle: chatTitle, messageUseMarkdown: messageUseMarkdown, orientationHandler: orientationHandler, mediaPickerSelectionParameters: mediaPickerSelectionParameters, availableInput: availablelInput)
-                    .environmentObject(globalFocusState)
-            }
-
-            .onChange(of: inputViewModel.showPicker) {
-                if $0 {
-                    globalFocusState.focus = nil
-                }
-            }
     }
 
     var mainView: some View {
@@ -198,19 +152,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 waitingForNetwork
             }
 
-            if isListAboveInputView {
-                listWithButton
-                if let builder = betweenListAndInputViewBuilder {
-                    builder()
-                }
-                inputView
-            } else {
-                inputView
-                if let builder = betweenListAndInputViewBuilder {
-                    builder()
-                }
-                listWithButton
-            }
+            listWithButton
         }
     }
 
@@ -260,14 +202,12 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @ViewBuilder
     var list: some View {
         UIList(viewModel: viewModel,
-               inputViewModel: inputViewModel,
                isScrolledToBottom: $isScrolledToBottom,
                shouldScrollToTop: $shouldScrollToTop,
                tableContentHeight: $tableContentHeight,
                messageBuilder: messageBuilder,
                mainHeaderBuilder: mainHeaderBuilder,
                headerBuilder: headerBuilder,
-               inputView: inputView,
                type: type,
                showDateHeaders: showDateHeaders,
                isScrollEnabled: isScrollEnabled,
@@ -329,42 +269,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             globalFocusState.focus = nil
         }
         .onAppear {
-            viewModel.didSendMessage = didSendMessage
-            viewModel.inputViewModel = inputViewModel
             viewModel.globalFocusState = globalFocusState
-
-            inputViewModel.didSendMessage = { value in
-                didSendMessage(value)
-                if type == .conversation {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        NotificationCenter.default.post(name: .onScrollToBottom, object: nil)
-                    }
-                }
-            }
         }
-    }
-
-    var inputView: some View {
-        Group {
-            if let inputViewBuilder = inputViewBuilder {
-                inputViewBuilder($inputViewModel.text, inputViewModel.attachments, inputViewModel.state, .message, inputViewModel.inputViewAction()) {
-                    globalFocusState.focus = nil
-                }
-            } else {
-                InputView(
-                    viewModel: inputViewModel,
-                    inputFieldId: viewModel.inputFieldId,
-                    style: .message,
-                    availableInput: availablelInput,
-                    messageUseMarkdown: messageUseMarkdown,
-                    recorderSettings: recorderSettings
-                )
-            }
-        }
-        .sizeGetter($inputViewSize)
-        .environmentObject(globalFocusState)
-        .onAppear(perform: inputViewModel.onStart)
-        .onDisappear(perform: inputViewModel.onStop)
     }
 
     func messageMenu(_ row: MessageRow) -> some View {
@@ -451,14 +357,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
 
 public extension ChatView {
 
-    func betweenListAndInputViewBuilder<V: View>(_ builder: @escaping ()->V) -> ChatView {
-        var view = self
-        view.betweenListAndInputViewBuilder = {
-            AnyView(builder())
-        }
-        return view
-    }
-
     func mainHeaderBuilder<V: View>(_ builder: @escaping ()->V) -> ChatView {
         var view = self
         view.mainHeaderBuilder = {
@@ -472,12 +370,6 @@ public extension ChatView {
         view.headerBuilder = { date in
             AnyView(builder(date))
         }
-        return view
-    }
-
-    func isListAboveInputView(_ isAbove: Bool) -> ChatView {
-        var view = self
-        view.isListAboveInputView = isAbove
         return view
     }
 
@@ -502,25 +394,6 @@ public extension ChatView {
     func showNetworkConnectionProblem(_ show: Bool) -> ChatView {
         var view = self
         view.showNetworkConnectionProblem = show
-        return view
-    }
-
-    func assetsPickerLimit(assetsPickerLimit: Int) -> ChatView {
-        var view = self
-        view.mediaPickerSelectionParameters = MediaPickerParameters()
-        view.mediaPickerSelectionParameters?.selectionLimit = assetsPickerLimit
-        return view
-    }
-
-    func setMediaPickerSelectionParameters(_ params: MediaPickerParameters) -> ChatView {
-        var view = self
-        view.mediaPickerSelectionParameters = params
-        return view
-    }
-
-    func orientationHandler(orientationHandler: @escaping MediaPickerOrientationHandler) -> ChatView {
-        var view = self
-        view.orientationHandler = orientationHandler
         return view
     }
 
@@ -572,12 +445,6 @@ public extension ChatView {
     }
 
     // makes sense only for built-in input view
-
-    func setAvailableInput(_ type: AvailableInputType) -> ChatView {
-        var view = self
-        view.availablelInput = type
-        return view
-    }
 
     func setRecorderSettings(_ settings: RecorderSettings) -> ChatView {
         var view = self

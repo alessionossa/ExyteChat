@@ -15,7 +15,6 @@ final class ChatViewModel: ObservableObject {
     let inputFieldId = UUID()
 
     var didSendMessage: (DraftMessage) -> Void = {_ in}
-    var inputViewModel: InputViewModel?
     var globalFocusState: GlobalFocusState?
 
     func presentAttachmentFullScreen(_ attachment: Attachment) {
@@ -44,11 +43,8 @@ final class ChatViewModel: ObservableObject {
     func messageMenuActionInternal(message: Message, action: DefaultMessageMenuAction) {
         switch action {
         case .reply:
-            inputViewModel?.attachments.replyMessage = message.toReplyMessage()
             globalFocusState?.focus = .uuid(inputFieldId)
         case .edit(let saveClosure):
-            inputViewModel?.text = message.text
-            inputViewModel?.edit(saveClosure)
             globalFocusState?.focus = .uuid(inputFieldId)
         }
     }
