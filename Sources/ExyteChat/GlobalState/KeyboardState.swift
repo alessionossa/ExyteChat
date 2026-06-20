@@ -4,7 +4,11 @@
 
 import Foundation
 import Combine
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 public final class KeyboardState: ObservableObject {
     @Published private(set) public var isShown: Bool = false
@@ -18,6 +22,8 @@ public final class KeyboardState: ObservableObject {
 
 private extension KeyboardState {
     func subscribeKeyboardNotifications() {
+        
+        #if canImport(UIKit)
         Publishers.Merge(
             NotificationCenter.default
                 .publisher(for: UIResponder.keyboardWillShowNotification)
@@ -30,5 +36,6 @@ private extension KeyboardState {
         .receive(on: RunLoop.main)
         .assign(to: \.isShown, on: self)
         .store(in: &subscriptions)
+        #endif
     }
 }
