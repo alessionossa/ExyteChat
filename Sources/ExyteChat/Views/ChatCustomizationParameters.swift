@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct ChatCustomizationParameters {
-    var isListAboveInputView: Bool = true
     var showScrollToBottomButton: Bool = true
     var showNetworkConnectionProblem: Bool = false
     var showDateHeaders: Bool = true
