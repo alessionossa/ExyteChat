@@ -18,10 +18,10 @@ public enum ReplyMode: CaseIterable, Sendable {
 }
 
 public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: View {
-
+    
     /// User and MessageId
     public typealias TapAvatarClosure = (User, String) -> ()
-
+    
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.chatTheme) private var theme
 
@@ -103,19 +103,19 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
                 }
             }
     }
-
+    
     var mainView: some View {
         VStack(spacing: 0) {
             if chatCustomizationParameters.showNetworkConnectionProblem, !networkMonitor.isConnected {
                 waitingForNetwork
             }
-
+            
             listWithButton
         }
         // Used to prevent ChatView movement during Emoji Keyboard invocation
         .ignoresSafeArea(isShowingMenu ? .keyboard : [])
     }
-
+    
     var waitingForNetwork: some View {
         VStack {
             Rectangle()
@@ -134,7 +134,7 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
         }
         .padding(.top, 8)
     }
-
+    
     @ViewBuilder
     var listWithButton: some View {
         switch type {
@@ -156,12 +156,12 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
                     .padding(.bottom, 8)
                 }
             }
-
+            
         case .comments:
             list
         }
     }
-
+    
     @ViewBuilder
     var list: some View {
         UIList(
@@ -252,7 +252,7 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
             }
         }
     }
-
+    
     /// Determines the message menu alignment based on ChatType and message sender.
     private func menuAlignment(_ message: Message, chatType: ChatType) -> MessageMenuAlignment {
         switch chatType {
@@ -262,7 +262,7 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
             return .left
         }
     }
-
+    
     /// Our default reactionCallback flow if the user supports Reactions by implementing the didReactToMessage closure
     private func reactionClosure(_ message: Message) -> (ReactionType?) -> () {
         { reactionType in
@@ -286,13 +286,13 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
     func showMessageMenu() {
         isShowingMenu = true
     }
-
+    
     func hideMessageMenu() {
         viewModel.messageMenuRow = nil
         viewModel.messageFrame = .zero
         isShowingMenu = false
     }
-
+    
     private func chatBackground() -> some View {
         Group {
             if let background = theme.images.background {
@@ -321,8 +321,60 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
             }
         }
     }
-
+    
     private func isLandscape() -> Bool {
         UIDevice.current.orientation.isLandscape
     }
 }
+
+//#Preview {
+//    let romeo = User(id: "romeo", name: "Romeo Montague", avatarURL: nil, isCurrentUser: true)
+//    let juliet = User(id: "juliet", name: "Juliet Capulet", avatarURL: nil, isCurrentUser: false)
+//
+//    let monday = try! Date.iso8601Date.parse("2025-05-12")
+//    let tuesday = try! Date.iso8601Date.parse("2025-05-13")
+//
+//    ChatView(messages: [
+//        Message(
+//            id: "26tb", user: romeo, status: .read, createdAt: monday,
+//            text: "And I’ll still stay, to have thee still forget"),
+//        Message(
+//            id: "zee6", user: romeo, status: .read, createdAt: monday,
+//            text: "Forgetting any other home but this"),
+//
+//        Message(
+//            id: "oWUN", user: juliet, status: .read, createdAt: monday,
+//            text: "’Tis almost morning. I would have thee gone"),
+//        Message(
+//            id: "P261", user: juliet, status: .read, createdAt: monday,
+//            text: "And yet no farther than a wanton’s bird"),
+//        Message(
+//            id: "46hu", user: juliet, status: .read, createdAt: monday,
+//            text: "That lets it hop a little from his hand"),
+//        Message(
+//            id: "Gjbm", user: juliet, status: .read, createdAt: monday,
+//            text: "Like a poor prisoner in his twisted gyves"),
+//        Message(
+//            id: "IhRQ", user: juliet, status: .read, createdAt: monday,
+//            text: "And with a silken thread plucks it back again"),
+//        Message(
+//            id: "kwWd", user: juliet, status: .read, createdAt: monday,
+//            text: "So loving-jealous of his liberty"),
+//
+//        Message(
+//            id: "9481", user: romeo, status: .read, createdAt: tuesday,
+//            text: "I would I were thy bird"),
+//
+//        Message(
+//            id: "dzmY", user: juliet, status: .sent, createdAt: tuesday, text: "Sweet, so would I"),
+//        Message(
+//            id: "r5HH", user: juliet, status: .sent, createdAt: tuesday,
+//            text: "Yet I should kill thee with much cherishing"),
+//        Message(
+//            id: "quy1", user: juliet, status: .sent, createdAt: tuesday,
+//            text: "Good night, good night. Parting is such sweet sorrow"),
+//        Message(
+//            id: "Mwh6", user: juliet, status: .sent, createdAt: tuesday,
+//            text: "That I shall say 'Good night' till it be morrow"),
+//    ]) { draft in }
+//}

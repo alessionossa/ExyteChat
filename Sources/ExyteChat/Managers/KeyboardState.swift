@@ -14,7 +14,7 @@ import AppKit
 public final class KeyboardState: ObservableObject {
     @Published private(set) public var isShown: Bool = false
     @Published private(set) public var keyboardFrame: CGRect = .zero
-
+    
     private var subscriptions = Set<AnyCancellable>()
 
     init() {
@@ -44,7 +44,7 @@ private extension KeyboardState {
                 .map { _ in .zero }
         )
         .receive(on: RunLoop.main)
-
+        
         // Assign the CGRect to keyboardFrame and store the sub
         pub.assign(to: \.keyboardFrame, on: self).store(in: &subscriptions)
         // Map the CGRect into a Bool, assign it to isShown and store the sub
