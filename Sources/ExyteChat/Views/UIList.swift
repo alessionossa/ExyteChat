@@ -767,14 +767,3 @@ struct UIList<MessageContent: View>: UIViewRepresentable {
         return res
     }
 }
-
-@MainActor
-func performBatchTableUpdates(_ tableView: UITableView, closure: ()->()) async {
-    await withCheckedContinuation { continuation in
-        tableView.performBatchUpdates {
-            closure()
-        } completion: { _ in
-            continuation.resume()
-        }
-    }
-}
