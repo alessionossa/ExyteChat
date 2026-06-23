@@ -9,7 +9,6 @@ struct MessageStatusView: View {
     @Environment(\.chatTheme) private var theme
 
     let status: Message.Status
-    let onRetry: () -> Void
 
     var body: some View {
         Group {
@@ -23,9 +22,7 @@ struct MessageStatusView: View {
             case .read:
                 statusImageStyled(image: theme.images.message.read, color: theme.colors.messageReadStatus)
             case .error:
-                Button(action: onRetry) {
-                    statusImageStyled(image: theme.images.message.error, color: theme.colors.statusError)
-                }
+                statusImageStyled(image: theme.images.message.error, color: theme.colors.statusError)
             }
         }
     }
@@ -44,24 +41,11 @@ struct SwiftUIView_Previews: PreviewProvider {
     
     static var previews: some View {
         VStack {
-            MessageStatusView(status: .sending, onRetry: {})
-            MessageStatusView(status: .sent, onRetry: {})
-            MessageStatusView(status: .delivered, onRetry: {})
-            MessageStatusView(status: .read, onRetry: {})
-            MessageStatusView(status: .error(emptyDraft()), onRetry: {})
+            MessageStatusView(status: .sending)
+            MessageStatusView(status: .sent)
+            MessageStatusView(status: .delivered)
+            MessageStatusView(status: .read)
+            MessageStatusView(status: .error)
         }
-    }
-
-    private static func emptyDraft() -> DraftMessage {
-        return DraftMessage(
-            id: nil,
-            text: "",
-            medias: [],
-            giphyMedia: nil,
-            recording: nil,
-            replyMessage: nil,
-            createdAt: Date()
-        )
-
     }
 }

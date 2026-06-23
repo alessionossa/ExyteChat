@@ -65,7 +65,6 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
     // MARK: - State
 
     @StateObject private var viewModel = ChatViewModel()
-    @StateObject private var globalFocusState = GlobalFocusState()
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var keyboardState = KeyboardState()
 
@@ -209,14 +208,6 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
                 }
             }
         }
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                globalFocusState.focus = nil
-            }
-        )
-        .onAppear {
-            viewModel.globalFocusState = globalFocusState
-        }
     }
 
     func messageMenu(_ row: MessageRow) -> some View {
@@ -235,8 +226,7 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
             animationDuration: chatCustomizationParameters.messageMenuAnimationDuration,
             onAction: menuActionClosure(row.message),
             reactionHandler: MessageMenu.ReactionConfig(
-                delegate: chatCustomizationParameters.reactionDelegate,
-                didReact: reactionClosure(row.message)
+                delegate: chatCustomizationParameters.reactionDelegate
             )
         ) {
             ChatMessageView(
@@ -263,19 +253,6 @@ public struct ChatView<MessageContent: View, MenuAction: MessageMenuAction>: Vie
         }
     }
     
-    /// Our default reactionCallback flow if the user supports Reactions by implementing the didReactToMessage closure
-    private func reactionClosure(_ message: Message) -> (ReactionType?) -> () {
-        { reactionType in
-            Task { @MainActor in
-                // Hide the menu
-                hideMessageMenu()
-                // Send the draft reaction
-                guard let reactionDelegate = chatCustomizationParameters.reactionDelegate, let reactionType else { return }
-                reactionDelegate.didReact(to: message, reaction: DraftReaction(messageID: message.id, type: reactionType))
-            }
-        }
-    }
-
     func menuActionClosure(_ message: Message) -> (MenuAction) -> () {
         { action in
             hideMessageMenu()

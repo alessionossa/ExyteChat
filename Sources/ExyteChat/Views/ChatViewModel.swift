@@ -18,15 +18,8 @@ final class ChatViewModel: ObservableObject {
     /// The messages frame that is currently being rendered in the Message Menu
     /// - Note: Used to further refine a messages frame (instead of using the cell boundary), mainly used for positioning reactions
     @Published var messageFrame: CGRect = .zero
-    
-    /// Provides a mechanism to issue haptic feedback to the user
-    /// - Note: Used when launching the MessageMenu
-    
-    let inputFieldId = UUID()
 
-    var didSendMessage: (DraftMessage) -> Void = {_ in }
     var didUpdateAttachmentStatus: (AttachmentUploadUpdate) -> Void = { _ in }
-    var globalFocusState: GlobalFocusState?
 
     func presentAttachmentFullScreen(_ attachment: Attachment) {
         fullscreenAttachmentItem = attachment
@@ -42,28 +35,16 @@ final class ChatViewModel: ObservableObject {
         didUpdateAttachmentStatus(uploadUpdate)
     }
 
-    func sendMessage(_ message: DraftMessage) {
-        didSendMessage(message)
-    }
-
     func messageMenuAction() -> (Message, DefaultMessageMenuAction) -> Void {
         { [weak self] message, action in
             self?.messageMenuActionInternal(message: message, action: action)
         }
     }
 
-    func focusTheInputTextView() {
-        globalFocusState?.focus = .uuid(inputFieldId)
-    }
-
     func messageMenuActionInternal(message: Message, action: DefaultMessageMenuAction) {
         switch action {
         case .copy:
             UIPasteboard.general.string = String(message.attributedText.characters)
-        case .reply:
-            focusTheInputTextView()
-        case .edit:
-            focusTheInputTextView()
         }
     }
 }

@@ -45,21 +45,7 @@ extension Reaction {
         case sending
         case sent
         case read
-        case error(DraftReaction)
-    }
-}
-
-public struct DraftReaction: Codable, Identifiable, Hashable, Sendable {
-    public let id: String
-    public let messageID: String
-    public let createdAt: Date
-    public let type: ReactionType
-
-    public init(id: String = UUID().uuidString, messageID: String, createdAt: Date = .now, type: ReactionType) {
-        self.id = id
-        self.messageID = messageID
-        self.createdAt = createdAt
-        self.type = type
+        case error
     }
 }
 

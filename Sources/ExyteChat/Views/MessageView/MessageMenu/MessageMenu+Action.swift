@@ -21,19 +21,11 @@ extension MessageMenuAction {
 public enum DefaultMessageMenuAction: MessageMenuAction, Sendable {
 
     case copy
-    case reply
-    case edit(saveClosure: @Sendable (String) -> Void)
-
-    public init() {self.init()}
 
     public func title() -> String {
         switch self {
         case .copy:
             "Copy"
-        case .reply:
-            "Reply"
-        case .edit:
-            "Edit"
         }
     }
 
@@ -41,37 +33,18 @@ public enum DefaultMessageMenuAction: MessageMenuAction, Sendable {
         switch self {
         case .copy:
             Image(systemName: "doc.on.doc")
-        case .reply:
-            Image(systemName: "arrowshape.turn.up.left")
-        case .edit:
-            if #available(iOS 18.0, macCatalyst 18.0, *) {
-                Image(systemName: "bubble.and.pencil")
-            } else {
-                Image(systemName: "square.and.pencil")
-            }
-        }
-    }
-
-    nonisolated public static func == (lhs: DefaultMessageMenuAction, rhs: DefaultMessageMenuAction) -> Bool {
-        switch (lhs, rhs) {
-        case (.copy, .copy),
-             (.reply, .reply),
-             (.edit(_), .edit(_)):
-            return true
-        default:
-            return false
         }
     }
 
     public static let allCases: [DefaultMessageMenuAction] = [
-        .copy, .reply, .edit(saveClosure: {_ in})
+        .copy
     ]
     
     static public func menuItems(for message: Message) -> [DefaultMessageMenuAction] {
         if message.user.isCurrentUser {
             return allCases
         } else {
-            return [.copy, .reply]
+            return [.copy]
         }
     }
 }

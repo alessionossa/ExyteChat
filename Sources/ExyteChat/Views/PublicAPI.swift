@@ -63,12 +63,6 @@ public extension ChatView {
         return view
     }
 
-    func autoFocusTextInputOnChatOpen(_ autoFocus: Bool) -> ChatView {
-        var view = self
-        view.chatCustomizationParameters.autoFocusTextInputOnChatOpen = autoFocus
-        return view
-    }
-
     func showMessageMenuOnLongPress(_ show: Bool) -> ChatView {
         var view = self
         view.chatCustomizationParameters.showMessageMenuOnLongPress = show
@@ -178,25 +172,6 @@ public extension ChatView {
     func messageReactionDelegate(_ reactionDelegate: ReactionDelegate) -> ChatView {
         var view = self
         view.chatCustomizationParameters.reactionDelegate = reactionDelegate
-        return view
-    }
-
-    /// Constructs, and applies, a ReactionDelegate for you based on the provided closures
-    func onMessageReaction(
-        didReactTo: @escaping (Message, DraftReaction) -> Void,
-        canReactTo: ((Message) -> Bool)? = nil,
-        availableReactionsFor: ((Message) -> [ReactionType]?)? = nil,
-        allowEmojiSearchFor: ((Message) -> Bool)? = nil,
-        shouldShowOverviewFor: ((Message) -> Bool)? = nil
-    ) -> ChatView {
-        var view = self
-        view.chatCustomizationParameters.reactionDelegate = DefaultReactionConfiguration(
-            didReact: didReactTo,
-            canReact: canReactTo,
-            reactions: availableReactionsFor,
-            allowEmojiSearch: allowEmojiSearchFor,
-            shouldShowOverview: shouldShowOverviewFor
-        )
         return view
     }
 
