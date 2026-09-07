@@ -103,11 +103,63 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var selectedGiphyMedia: GPHMedia? = nil
     @State private var chatSize: CGSize = .zero
 
+    /// the system picker only handles photo/video library browsing, not camera capture,
+    /// so camera requests always fall through to the ExyteMediaPicker
+    private var useSystemPhotoPicker: Bool {
+        inputViewCustomizationParameters.photoPickerBackend == .system && inputViewModel.mediaPickerMode == .photos
+    }
+
+    private var customMediaPickerBinding: Binding<Bool> {
+        Binding(
+            get: { inputViewModel.showPicker && !useSystemPhotoPicker },
+            set: { inputViewModel.showPicker = $0 }
+        )
+    }
+
+    private var systemMediaPickerBinding: Binding<Bool> {
+        Binding(
+            get: { inputViewModel.showPicker && useSystemPhotoPicker },
+            set: { inputViewModel.showPicker = $0 }
+        )
+    }
+
+    // MARK: - Body
+
     public var body: some View {
+        mainViewWithBehaviorsAndSheets
+    }
+
+    var mainView: some View {
+        VStack(spacing: 0) {
+            if chatCustomizationParameters.showNetworkConnectionProblem, !networkMonitor.isConnected {
+                waitingForNetwork
+            }
+
+            if chatCustomizationParameters.isListAboveInputView {
+                listWithButton
+                if let builder = betweenListAndInputViewBuilder {
+                    builder()
+                }
+                inputView
+            } else {
+                inputView
+                if let builder = betweenListAndInputViewBuilder {
+                    builder()
+                }
+                listWithButton
+            }
+        }
+        // Used to prevent ChatView movement during Emoji Keyboard invocation
+        .ignoresSafeArea(isShowingMenu ? .keyboard : [])
+        .background(chatBackground())
+        .sizeGetter($chatSize)
+        .environment(\.chatSize, chatSize)
+        .environment(\.chatLocalization, chatCustomizationParameters.localization)
+        .environmentObject(keyboardState)
+    }
+
+    private var mainViewWithBehaviors: some View {
         mainView
-            .background(chatBackground())
-            .environment(\.chatLocalization, chatCustomizationParameters.localization)
-            .environmentObject(keyboardState)
             .onAppear {
                 if isGiphyAvailable() {
                     if let giphyKey = giphyConfig.giphyKey {
@@ -144,6 +196,10 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             .onChange(of: chatCustomizationParameters.scrollToParams) { scrollToParams in
                 self.pendingScrollTo = scrollToParams
             }
+    }
+
+    private var mainViewWithBehaviorsAndSheets: some View {
+        mainViewWithBehaviors
             .sheet(isPresented: $inputViewModel.showGiphyPicker) {
                 if giphyConfig.giphyKey != nil {
                     GiphyEditorView(
@@ -233,52 +289,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
     }
 
-    /// the system picker only handles photo/video library browsing, not camera capture,
-    /// so camera requests always fall through to the ExyteMediaPicker
-    private var useSystemPhotoPicker: Bool {
-        inputViewCustomizationParameters.photoPickerBackend == .system && inputViewModel.mediaPickerMode == .photos
-    }
+    // MARK: - other views
 
-    private var customMediaPickerBinding: Binding<Bool> {
-        Binding(
-            get: { inputViewModel.showPicker && !useSystemPhotoPicker },
-            set: { inputViewModel.showPicker = $0 }
-        )
-    }
-
-    private var systemMediaPickerBinding: Binding<Bool> {
-        Binding(
-            get: { inputViewModel.showPicker && useSystemPhotoPicker },
-            set: { inputViewModel.showPicker = $0 }
-        )
-    }
-
-    var mainView: some View {
-        VStack(spacing: 0) {
-            if chatCustomizationParameters.showNetworkConnectionProblem, !networkMonitor.isConnected {
-                waitingForNetwork
-            }
-            
-            if chatCustomizationParameters.isListAboveInputView {
-                listWithButton
-                if let builder = betweenListAndInputViewBuilder {
-                    builder()
-                }
-                inputView
-            } else {
-                inputView
-                if let builder = betweenListAndInputViewBuilder {
-                    builder()
-                }
-                listWithButton
-            }
-        }
-        // Used to prevent ChatView movement during Emoji Keyboard invocation
-        .ignoresSafeArea(isShowingMenu ? .keyboard : [])
-        .sizeGetter($chatSize)
-        .environment(\.chatSize, chatSize)
-    }
-    
     var waitingForNetwork: some View {
         VStack {
             Rectangle()
